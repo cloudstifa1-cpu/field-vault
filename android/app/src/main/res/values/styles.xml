@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="FV" parent="android:Theme.DeviceDefault.NoActionBar">
+    <item name="android:windowBackground">#1b2420</item>
+    <item name="android:statusBarColor">#1b2420</item>
+  </style>
+</resources>

@@ -1,0 +1,25 @@
+plugins { id 'com.android.application' }
+android {
+  namespace 'app.fieldvault'
+  compileSdk 34
+  defaultConfig {
+    applicationId 'app.fieldvault'
+    minSdk 21
+    targetSdk 34
+    versionCode (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+    versionName "1.0." + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+  }
+  signingConfigs {
+    // Same key every build, so new versions install over the old one and keep your notes.
+    fv {
+      storeFile file('../fieldvault.keystore')
+      storePassword 'fieldvault'
+      keyAlias 'fieldvault'
+      keyPassword 'fieldvault'
+    }
+  }
+  buildTypes {
+    release { minifyEnabled false; signingConfig signingConfigs.fv }
+  }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}

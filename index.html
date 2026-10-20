@@ -473,6 +473,12 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     };
   }
 
+  // Phone back button (used by the Android app): close a sheet, or go back a page. Returns true if handled.
+  window.fvBack = function () {
+    if (!$('sheet').hidden) { closeSheet(); return true; }
+    if (view === 'doc') { goBack(); return true; }
+    return false;
+  };
   window.addEventListener('resize', function () { if (view === 'doc') paint(); });
   S = load(); buildMap(); renderList();
 })();

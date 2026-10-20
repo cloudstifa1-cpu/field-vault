@@ -9,3 +9,9 @@ A phone notes app for field work and brainstorming. Talk your notes in with your
 - Copy backup / Restore from the ⋯ menu
 
 Live: https://cloudstifa1-cpu.github.io/field-vault/
+
+## Android app
+
+Download and install: https://github.com/cloudstifa1-cpu/field-vault/releases/latest/download/field-vault.apk
+
+Every push to `main` rebuilds the APK (see `.github/workflows/android.yml`). The web page in the root is bundled into the app, so it runs with no signal.
