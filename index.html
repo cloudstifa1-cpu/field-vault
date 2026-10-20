@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#1b2420">
+<meta name="description" content="Speak it. Link it. Find it later. Voice notes for field work with linked vault pages.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Field Vault</title>
+<style>
+/* Layout: one column, phone-first. List screen ↔ page screen, with a thumb toolbar pinned above the keyboard. */
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  --bg: #eef1ee; --surface: #ffffff; --ink: #1b2420; --muted: #5d6b64; --line: #cfd8d2;
+  --accent: #ffb300; --accent-ink: #1b2420;
+  --person: #c2410c; --place: #0f7a52; --thing: #2563c9; --idea: #8a3fb8;
+  --font-body: system-ui, Roboto, -apple-system, "Segoe UI", sans-serif;
+  --font-label: "Roboto Condensed", "sans-serif-condensed", "Arial Narrow", system-ui, sans-serif;
+  --mix: 22%;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121815; --surface: #1b231f; --ink: #e9efeb; --muted: #9aa8a0; --line: #2f3a34;
+  --accent: #ffc233; --accent-ink: #15130c;
+  --person: #ff8a57; --place: #4fd19c; --thing: #79a8ff; --idea: #d29bff; --mix: 26%; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121815; --surface: #1b231f; --ink: #e9efeb; --muted: #9aa8a0; --line: #2f3a34;
+  --accent: #ffc233; --accent-ink: #15130c;
+  --person: #ff8a57; --place: #4fd19c; --thing: #79a8ff; --idea: #d29bff; --mix: 26%; color-scheme: dark }
+
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 17px; line-height: 1.5; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.t-person { --c: var(--person); } .t-place { --c: var(--place); } .t-thing { --c: var(--thing); } .t-idea { --c: var(--idea); }
+
+header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); padding-block: 8px;
+  display: flex; align-items: center; gap: 8px; min-height: 56px; }
+.brand { font-family: var(--font-label); font-weight: 700; font-size: 26px; letter-spacing: .02em; text-transform: uppercase; flex: 1; display: flex; align-items: center; gap: 8px; }
+.brand i { display: inline-block; width: 14px; height: 22px; background: repeating-linear-gradient(135deg, var(--accent) 0 5px, var(--ink) 5px 10px); border-radius: 2px; }
+.iconbtn { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; min-width: 44px; height: 44px; font-size: 20px; display: grid; place-items: center; padding: 0 10px; }
+#docTitle { flex: 1; min-width: 0; border: 0; background: transparent; font-weight: 700; font-size: 20px; padding: 6px 4px; border-bottom: 2px solid transparent; }
+#docTitle:focus { outline: none; border-bottom-color: var(--accent); }
+
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 24px; max-width: 760px; margin: 0 auto; display: grid; gap: 14px; }
+
+/* List screen */
+#search { width: 100%; box-sizing: border-box; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; font-size: 17px; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; }
+.tabs button { border: 0; background: transparent; border-radius: 9px; padding: 10px; font-family: var(--font-label); font-weight: 700; font-size: 19px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.tabs button.on { background: var(--ink); color: var(--bg); }
+.newbtn { border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 12px; padding: 14px; font-weight: 700; font-size: 18px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-size: 15px; display: inline-flex; align-items: center; gap: 6px; }
+.chip.on { border-color: var(--c, var(--ink)); box-shadow: inset 0 0 0 1px var(--c, var(--ink)); font-weight: 700; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+.rows { display: grid; gap: 8px; }
+.row { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; display: grid; gap: 4px; width: 100%; min-width: 0; }
+.row.v { border-left: 6px solid var(--c); }
+.row b { font-size: 18px; overflow-wrap: anywhere; }
+.row .snip { color: var(--muted); font-size: 15px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.meta { font-family: var(--font-label); font-weight: 600; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+.ex { color: var(--accent-ink); background: var(--accent); border-radius: 4px; padding: 0 6px; }
+.empty { color: var(--muted); text-align: center; padding: 24px 8px; }
+
+/* Page screen */
+.vaultbar { display: grid; gap: 10px; }
+.types { display: flex; gap: 6px; flex-wrap: wrap; }
+.field { display: grid; gap: 4px; }
+.lbl { font-family: var(--font-label); font-weight: 700; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#aliases { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 10px 12px; font-size: 16px; width: 100%; box-sizing: border-box; }
+.ed { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+.ed .bd, .ed textarea { font-family: var(--font-body); font-size: 19px; line-height: 1.6; padding: 14px 16px; margin: 0; border: 0; box-sizing: border-box; width: 100%;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; letter-spacing: normal; tab-size: 4; }
+.ed .bd { position: absolute; inset: 0; color: transparent; pointer-events: none; overflow: hidden; }
+.ed textarea { position: relative; display: block; background: transparent; resize: none; overflow: hidden; min-height: 45vh; caret-color: var(--ink); }
+.ed textarea:focus { outline: none; }
+.ed:focus-within { border-color: var(--accent); }
+mark { color: transparent; border-radius: 3px; background: color-mix(in srgb, var(--c) var(--mix), transparent); box-shadow: inset 0 -2px 0 var(--c); }
+mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
+.mentions { display: grid; gap: 8px; }
+.mention { text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 14px; display: grid; gap: 2px; width: 100%; min-width: 0; }
+.mention span { color: var(--muted); font-size: 15px; overflow-wrap: anywhere; }
+.mention em { font-style: normal; font-weight: 700; color: var(--ink); background: color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 3px; }
+.hint { color: var(--muted); font-size: 15px; }
+
+/* Thumb toolbar */
+#tools { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line);
+  padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px));
+  padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  display: grid; grid-template-columns: 56px 1fr 56px 56px; gap: 8px; }
+#tools button { height: 56px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); font-size: 22px; }
+#tools #linkBtn { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 700; font-size: 19px; }
+#pill { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 7;
+  border: 0; border-radius: 999px; padding: 12px 18px; font-weight: 700; font-size: 17px; background: var(--ink); color: var(--bg);
+  display: flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+#pill .dot { box-shadow: 0 0 0 2px var(--bg); }
+#pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.docpad { padding-bottom: 96px; }
+
+/* Sheet + toast */
+#sheet { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; }
+#sheet .card { background: var(--surface); width: 100%; border-radius: 18px 18px 0 0; max-height: 85%; overflow: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 10px; }
+#sheet h2 { margin: 0; font-family: var(--font-label); font-size: 24px; text-transform: uppercase; letter-spacing: .03em; }
+#sheet p { margin: 0; color: var(--muted); }
+.sbtn { border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: 14px; font-weight: 700; text-align: left; }
+.sbtn.primary { background: var(--accent); color: var(--accent-ink); border: 0; }
+.sbtn.danger { color: var(--person); }
+#sheet textarea { width: 100%; box-sizing: border-box; min-height: 140px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 14px; background: var(--bg); }
+#toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(70px + env(safe-area-inset-top, 0px)); z-index: 30;
+  background: var(--ink); color: var(--bg); border-radius: 10px; padding: 10px 16px; font-weight: 700; max-width: calc(100% - 32px); }
+@media (prefers-reduced-motion: no-preference) { #pill, #toast { animation: up .18s ease-out; } @keyframes up { from { opacity: 0; translate: 0 8px; } } }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header id="hdr"></header>
+<main id="main"></main>
+<nav id="tools" hidden aria-label="Editing tools">
+  <button id="prevW" aria-label="Move cursor back one word">◀</button>
+  <button id="linkBtn">🔗 Link word</button>
+  <button id="nextW" aria-label="Move cursor forward one word">▶</button>
+  <button id="stamp" aria-label="Insert date and time">🕒</button>
+</nav>
+<button id="pill" hidden></button>
+<div id="sheet" hidden><div class="card" id="sheetCard"></div></div>
+<div id="toast" hidden></div>
+
+<script>
+(function () {
+  var KEY = 'fieldvault.v1';
+  var TYPES = { person: 'Person', place: 'Place', thing: 'Thing', idea: 'Idea' };
+  var $ = function (id) { return document.getElementById(id); };
+  var S, view = 'list', tab = 'notes', typeFilter = '', query = '', cur = null, stack = [];
+  var linkRe = null, lookup = {}, ranges = [];
+
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function when(t) { var d = new Date(t); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+  function toast(m) { var t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { t.hidden = true; }, 2000); }
+
+  // ── Storage ──
+  function seed() {
+    var ex = true, t = Date.now();
+    var v = [
+      { id: uid(), type: 'person', title: 'Dale Hutchins', aliases: ['Dale'], text: 'Landowner on the east parcel. Wants a call before anyone comes out.', ex: ex, updated: t },
+      { id: uid(), type: 'place', title: 'Brush Creek crossing', aliases: ['Brush Creek'], text: 'Low-water crossing on the county road. Washed out this spring.', ex: ex, updated: t },
+      { id: uid(), type: 'thing', title: 'corner pins', aliases: ['corner pin'], text: 'Steel pins with orange caps. Three set along the east fence.', ex: ex, updated: t },
+      { id: uid(), type: 'idea', title: 'washout map', aliases: ['washouts', 'washout'], text: 'Mark every washout each season so we can compare year to year. Start with Brush Creek.', ex: ex, updated: t }
+    ];
+    var n = [{ id: uid(), title: 'East fence line', ex: ex, updated: t,
+      text: 'Met Dale at the north gate around 9. He says Brush Creek washed out again in spring.\n\nFlagged three corner pins along the fence. Dale thinks the corner pin by the cattle guard got moved. Check it next trip.\n\nAdd this to the washout map.' }];
+    return { notes: n, vault: v };
+  }
+  function load() {
+    try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && s.notes && s.vault) return s; } catch (e) {}
+    return seed();
+  }
+  var saveT;
+  function save() { clearTimeout(saveT); saveT = setTimeout(function () { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Could not save. Copy a backup from the menu.'); } }, 300); }
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+
+  // ── Linking engine ──
+  function buildMap() {
+    lookup = {}; var terms = [];
+    S.vault.forEach(function (v) {
+      [v.title].concat(v.aliases || []).forEach(function (t) {
+        t = (t || '').trim(); if (t.length < 2) return;
+        var k = t.toLowerCase(); if (lookup[k]) return; lookup[k] = v.id; terms.push(t);
+      });
+    });
+    terms.sort(function (a, b) { return b.length - a.length; });
+    linkRe = terms.length ? new RegExp('(?<![\\p{L}\\p{N}])(' + terms.map(escRe).join('|') + ')(?![\\p{L}\\p{N}])', 'giu') : null;
+  }
+  function vault(id) { for (var i = 0; i < S.vault.length; i++) if (S.vault[i].id === id) return S.vault[i]; }
+  function noteById(id) { for (var i = 0; i < S.notes.length; i++) if (S.notes[i].id === id) return S.notes[i]; }
+  function findLinks(text, selfId) {
+    var out = []; if (!linkRe || !text) return out; linkRe.lastIndex = 0; var m;
+    while ((m = linkRe.exec(text))) {
+      var id = lookup[m[0].toLowerCase()];
+      if (id && id !== selfId) out.push({ s: m.index, e: m.index + m[0].length, id: id });
+      if (!m[0].length) linkRe.lastIndex++;
+    }
+    return out;
+  }
+  function docOf(c) { return c.kind === 'note' ? noteById(c.id) : vault(c.id); }
+  function noteTitle(n) { return n.title || (n.text || '').trim().split('\n')[0].slice(0, 60) || 'Untitled note'; }
+
+  // ── Header ──
+  function renderHeader() {
+    var h = $('hdr');
+    if (view === 'list') {
+      h.innerHTML = '<div class="brand"><i></i>Field Vault</div><button class="iconbtn" id="menuBtn" aria-label="Menu">⋯</button>';
+      $('menuBtn').onclick = openMenu;
+    } else {
+      var d = docOf(cur);
+      h.innerHTML = '<button class="iconbtn" id="backBtn" aria-label="Back">←</button>' +
+        '<input id="docTitle" aria-label="Title" placeholder="' + (cur.kind === 'note' ? 'Note title' : 'Name') + '" value="' + esc(d.title || '') + '">' +
+        '<button class="iconbtn" id="docMenu" aria-label="Page options">⋯</button>';
+      $('backBtn').onclick = goBack;
+      $('docMenu').onclick = openDocMenu;
+      var t = $('docTitle'), before = d.title;
+      t.oninput = function () { d.title = t.value; d.updated = Date.now(); save(); };
+      t.onchange = function () {
+        if (cur.kind === 'vault') {
+          var old = (before || '').trim(), nw = (d.title || '').trim();
+          if (old && nw && old.toLowerCase() !== nw.toLowerCase() && d.aliases.map(function (a) { return a.toLowerCase(); }).indexOf(old.toLowerCase()) < 0) {
+            d.aliases.push(old); $('aliases').value = d.aliases.join(', '); toast('Kept “' + old + '” as another name so old notes still link');
+          }
+          before = d.title; buildMap(); paint(); save();
+        }
+      };
+      t.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); $('ta').focus(); } };
+    }
+  }
+
+  // ── List screen ──
+  function renderList() {
+    view = 'list'; cur = null; $('tools').hidden = true; $('pill').hidden = true; renderHeader();
+    var m = $('main');
+    m.innerHTML = '<div class="wrap">' +
+      '<input id="search" type="search" placeholder="Search notes and vault" value="' + esc(query) + '" aria-label="Search">' +
+      '<div class="tabs" role="tablist"><button id="tNotes" class="' + (tab === 'notes' ? 'on' : '') + '">Notes · ' + S.notes.length + '</button>' +
+      '<button id="tVault" class="' + (tab === 'vault' ? 'on' : '') + '">Vault · ' + S.vault.length + '</button></div>' +
+      (tab === 'notes' ? '<button class="newbtn" id="newNote">+ New note</button>' : '<div class="filters" id="filters"></div>') +
+      '<div class="rows" id="rows"></div></div>';
+    $('search').oninput = function () { query = this.value; fillRows(); };
+    $('tNotes').onclick = function () { tab = 'notes'; renderList(); };
+    $('tVault').onclick = function () { tab = 'vault'; renderList(); };
+    if ($('newNote')) $('newNote').onclick = function () {
+      var n = { id: uid(), title: '', text: '', updated: Date.now() }; S.notes.unshift(n); save();
+      stack = []; openDoc({ kind: 'note', id: n.id }, { focus: true });
+    };
+    if ($('filters')) {
+      var f = $('filters'), opts = [['', 'All']].concat(Object.keys(TYPES).map(function (k) { return [k, TYPES[k]]; }));
+      opts.forEach(function (o) {
+        var b = document.createElement('button'); b.className = 'chip' + (o[0] ? ' t-' + o[0] : '') + (typeFilter === o[0] ? ' on' : '');
+        b.innerHTML = (o[0] ? '<span class="dot"></span>' : '') + o[1];
+        b.onclick = function () { typeFilter = o[0]; renderList(); }; f.appendChild(b);
+      });
+    }
+    fillRows();
+  }
+  function counts() {
+    var c = {};
+    S.notes.concat(S.vault).forEach(function (d) { findLinks(d.text, d.type ? d.id : null).forEach(function (r) { c[r.id] = (c[r.id] || 0) + 1; }); });
+    return c;
+  }
+  function fillRows() {
+    var box = $('rows'), q = query.trim().toLowerCase(); box.innerHTML = '';
+    var match = function (d) { return !q || ((d.title || '') + ' ' + (d.aliases || []).join(' ') + ' ' + (d.text || '')).toLowerCase().indexOf(q) >= 0; };
+    if (tab === 'notes') {
+      var list = S.notes.filter(match).sort(function (a, b) { return b.updated - a.updated; });
+      if (!list.length) box.innerHTML = '<p class="empty">' + (q ? 'No notes match “' + esc(query) + '”.' : 'No notes yet. Tap New note, then use your keyboard’s mic to talk.') + '</p>';
+      list.forEach(function (n) {
+        var b = document.createElement('button'); b.className = 'row';
+        var links = findLinks(n.text).length, body = (n.text || '').replace(/\s+/g, ' ').trim();
+        b.innerHTML = '<b>' + esc(noteTitle(n)) + '</b><span class="snip">' + esc(body || 'Empty') + '</span>' +
+          '<span class="meta"><span>' + when(n.updated) + '</span><span>' + links + ' link' + (links === 1 ? '' : 's') + '</span>' + (n.ex ? '<span class="ex">Example</span>' : '') + '</span>';
+        b.onclick = function () { stack = []; openDoc({ kind: 'note', id: n.id }); };
+        box.appendChild(b);
+      });
+    } else {
+      var c = counts();
+      var vl = S.vault.filter(function (v) { return (!typeFilter || v.type === typeFilter) && match(v); })
+        .sort(function (a, b) { return a.title.localeCompare(b.title); });
+      if (!vl.length) box.innerHTML = '<p class="empty">' + (q || typeFilter ? 'Nothing in the vault matches.' : 'The vault is empty. In a note, put the cursor on a word and tap 🔗 Link word.') + '</p>';
+      vl.forEach(function (v) {
+        var b = document.createElement('button'); b.className = 'row v t-' + v.type;
+        b.innerHTML = '<b>' + esc(v.title) + '</b>' + (v.text ? '<span class="snip">' + esc(v.text.replace(/\s+/g, ' ')) + '</span>' : '') +
+          '<span class="meta"><span>' + TYPES[v.type] + '</span><span>' + (c[v.id] || 0) + ' mention' + (c[v.id] === 1 ? '' : 's') + '</span>' +
+          (v.aliases.length ? '<span>Also: ' + esc(v.aliases.join(', ')) + '</span>' : '') + (v.ex ? '<span class="ex">Example</span>' : '') + '</span>';
+        b.onclick = function () { stack = []; openDoc({ kind: 'vault', id: v.id }); };
+        box.appendChild(b);
+      });
+    }
+  }
+
+  // ── Page screen (a note or a vault page) ──
+  function openDoc(c, opt) {
+    opt = opt || {}; var d = docOf(c); if (!d) return renderList();
+    view = 'doc'; cur = c; renderHeader(); $('pill').hidden = true; $('tools').hidden = false;
+    var isV = c.kind === 'vault', m = $('main');
+    m.innerHTML = '<div class="wrap docpad">' +
+      (isV ? '<div class="vaultbar"><div class="types" id="types"></div>' +
+        '<label class="field"><span class="lbl">Also called (comma between names)</span><input id="aliases" value="' + esc(d.aliases.join(', ')) + '" placeholder="Nicknames, short names"></label></div>' : '') +
+      (isV ? '<span class="lbl">Details</span>' : '') +
+      '<div class="ed"><div class="bd" id="bd" aria-hidden="true"></div><textarea id="ta" spellcheck="true" autocapitalize="sentences" placeholder="' +
+      (isV ? 'Add details here. Come back anytime to add more.' : 'Tap here, then tap the mic on your keyboard and talk.') + '">' + esc(d.text || '') + '</textarea></div>' +
+      (isV ? '<span class="lbl">Mentioned in</span><div class="mentions" id="mentions"></div>' :
+        '<p class="hint">Put the cursor on a word, or select a few words, then tap 🔗 Link word (or press Tab). Every time that name shows up again it links to its vault page.</p>') +
+      '</div>';
+    var ta = $('ta');
+    if (isV) {
+      var tb = $('types');
+      Object.keys(TYPES).forEach(function (k) {
+        var b = document.createElement('button'); b.className = 'chip t-' + k + (d.type === k ? ' on' : '');
+        b.innerHTML = '<span class="dot"></span>' + TYPES[k];
+        b.onclick = function () { d.type = k; save(); [].forEach.call(tb.children, function (x) { x.classList.toggle('on', x === b); }); };
+        tb.appendChild(b);
+      });
+      $('aliases').onchange = function () {
+        d.aliases = this.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean); d.updated = Date.now(); buildMap(); paint(); save();
+      };
+      renderMentions();
+    }
+    ta.addEventListener('input', function () { d.text = ta.value; d.updated = Date.now(); paint(); save(); $('pill').hidden = true; });
+    ta.addEventListener('click', function () { setTimeout(checkPill, 0); });
+    ta.addEventListener('keyup', function (e) { if (/Arrow|Home|End/.test(e.key)) checkPill(); });
+    ta.addEventListener('keydown', function (e) { if (e.key === 'Tab') { e.preventDefault(); linkWord(); } });
+    window.scrollTo(0, 0);
+    paint(opt.pos);
+    if (opt.pos != null) {
+      try { ta.setSelectionRange(opt.pos, opt.pos); } catch (e) {}
+      var mk = document.querySelector('mark[data-s="' + opt.pos + '"]');
+      if (mk) { mk.classList.add('hit'); mk.scrollIntoView({ block: 'center' }); setTimeout(function () { mk.classList.remove('hit'); }, 1600); }
+    }
+    if (opt.focus) ta.focus();
+  }
+  function paint() {
+    var ta = $('ta'), bd = $('bd'); if (!ta) return;
+    var text = ta.value, h = '', i = 0;
+    ranges = findLinks(text, cur.kind === 'vault' ? cur.id : null);
+    ranges.forEach(function (r) {
+      var v = vault(r.id);
+      h += esc(text.slice(i, r.s)) + '<mark class="t-' + v.type + '" data-s="' + r.s + '">' + esc(text.slice(r.s, r.e)) + '</mark>'; i = r.e;
+    });
+    h += esc(text.slice(i)); if (text.slice(-1) === '\n' || !text) h += ' ';
+    bd.innerHTML = h;
+    ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px';
+  }
+  function renderMentions() {
+    var box = $('mentions'); if (!box) return; box.innerHTML = '';
+    var found = 0;
+    S.notes.map(function (n) { return { kind: 'note', d: n }; }).concat(S.vault.filter(function (v) { return v.id !== cur.id; }).map(function (v) { return { kind: 'vault', d: v }; }))
+      .forEach(function (x) {
+        findLinks(x.d.text, x.kind === 'vault' ? x.d.id : null).filter(function (r) { return r.id === cur.id; }).forEach(function (r) {
+          found++;
+          var t = x.d.text, a = Math.max(0, r.s - 50), z = Math.min(t.length, r.e + 50);
+          var b = document.createElement('button'); b.className = 'mention';
+          b.innerHTML = '<span class="meta">' + (x.kind === 'note' ? 'Note' : TYPES[x.d.type]) + ' · ' + esc(x.kind === 'note' ? noteTitle(x.d) : x.d.title) + '</span>' +
+            '<span>' + (a ? '…' : '') + esc(t.slice(a, r.s)) + '<em>' + esc(t.slice(r.s, r.e)) + '</em>' + esc(t.slice(r.e, z)) + (z < t.length ? '…' : '') + '</span>';
+          b.onclick = function () { go({ kind: x.kind, id: x.d.id }, r.s); };
+          box.appendChild(b);
+        });
+      });
+    if (!found) box.innerHTML = '<p class="hint">Not mentioned anywhere yet. Once you say or type this name in a note, it shows up here.</p>';
+  }
+
+  // ── Moving between pages ──
+  function here() { var ta = $('ta'); return { kind: cur.kind, id: cur.id, pos: ta ? ta.selectionStart : 0 }; }
+  function go(c, pos) { stack.push(here()); openDoc(c, { pos: pos }); }
+  function goBack() {
+    var prev = stack.pop();
+    if (prev && docOf(prev)) openDoc(prev, { pos: prev.pos }); else renderList();
+  }
+
+  // Tap a linked word → offer to open its vault page
+  function checkPill() {
+    var ta = $('ta'), p = $('pill'); if (!ta) return;
+    if (ta.selectionStart !== ta.selectionEnd) { p.hidden = true; return; }
+    var pos = ta.selectionStart, r = null;
+    for (var i = 0; i < ranges.length; i++) if (pos >= ranges[i].s && pos <= ranges[i].e) { r = ranges[i]; break; }
+    if (!r) { p.hidden = true; return; }
+    var v = vault(r.id);
+    p.className = 't-' + v.type; p.innerHTML = '<span class="dot"></span><span>Open ' + esc(v.title) + ' ›</span>'; p.hidden = false;
+    p.onclick = function () { p.hidden = true; go({ kind: 'vault', id: v.id }); };
+  }
+
+  // ── Link a word ──
+  var WORD = /[\p{L}\p{N}'’\-]/u;
+  function linkWord() {
+    var ta = $('ta'); if (!ta) return;
+    var s = ta.selectionStart, e = ta.selectionEnd, t = ta.value;
+    for (var i = 0; i < ranges.length; i++) if (s >= ranges[i].s && s <= ranges[i].e && e <= ranges[i].e) return go({ kind: 'vault', id: ranges[i].id });
+    if (s === e) {
+      while (s > 0 && WORD.test(t[s - 1])) s--;
+      while (e < t.length && WORD.test(t[e])) e++;
+    }
+    var w = t.slice(s, e).replace(/^[\s'’\-]+|[\s'’\-.,;:!?]+$/g, '').replace(/\s+/g, ' ');
+    if (w.length < 2) { toast('Put the cursor on a word first, or select a few words'); return; }
+    var id = lookup[w.toLowerCase()];
+    if (!id) {
+      var v = { id: uid(), type: 'idea', title: w, aliases: [], text: '', updated: Date.now() };
+      S.vault.push(v); id = v.id; buildMap(); save(); toast('Added “' + w + '” to the vault');
+    }
+    go({ kind: 'vault', id: id });
+  }
+
+  // ── Toolbar ──
+  ['prevW', 'linkBtn', 'nextW', 'stamp'].forEach(function (id) {
+    $(id).addEventListener('pointerdown', function (e) { e.preventDefault(); }); // keep the keyboard open
+  });
+  $('linkBtn').onclick = linkWord;
+  function moveWord(dir) {
+    var ta = $('ta'); if (!ta) return; var t = ta.value, p = ta.selectionStart;
+    if (dir < 0) { while (p > 0 && !WORD.test(t[p - 1])) p--; while (p > 0 && WORD.test(t[p - 1])) p--; }
+    else { while (p < t.length && WORD.test(t[p])) p++; while (p < t.length && !WORD.test(t[p])) p++; }
+    ta.setSelectionRange(p, p); checkPill();
+  }
+  $('prevW').onclick = function () { moveWord(-1); };
+  $('nextW').onclick = function () { moveWord(1); };
+  $('stamp').onclick = function () {
+    var ta = $('ta'); if (!ta) return;
+    var s = ta.selectionStart, pre = s > 0 && ta.value[s - 1] !== '\n' ? '\n' : '';
+    ta.setRangeText(pre + '[' + when(Date.now()) + '] ', s, ta.selectionEnd, 'end');
+    ta.dispatchEvent(new Event('input'));
+  };
+
+  // ── Sheets: menu, backup, delete ──
+  function sheet(html) { $('sheetCard').innerHTML = html; $('sheet').hidden = false; }
+  function closeSheet() { $('sheet').hidden = true; }
+  $('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
+  function openMenu() {
+    var hasEx = S.notes.concat(S.vault).some(function (d) { return d.ex; });
+    sheet('<h2>Field Vault</h2><p>Everything is saved on this phone, in this browser. Copy a backup now and then and keep it somewhere safe.</p>' +
+      '<button class="sbtn primary" id="mCopy">Copy backup</button>' +
+      '<button class="sbtn" id="mRestore">Restore from a backup</button>' +
+      (hasEx ? '<button class="sbtn danger" id="mEx">Remove the example notes</button>' : '') +
+      '<button class="sbtn" id="mClose">Close</button>');
+    $('mClose').onclick = closeSheet;
+    $('mCopy').onclick = function () {
+      var json = JSON.stringify(S);
+      var done = function () { closeSheet(); toast('Backup copied. Paste it into a note app or email to yourself.'); };
+      try { navigator.clipboard.writeText(json).then(done, function () { showCopy(json); }); } catch (e) { showCopy(json); }
+    };
+    $('mRestore').onclick = function () {
+      sheet('<h2>Restore</h2><p>Paste a backup below. This replaces what is on this phone now.</p><textarea id="rTxt" aria-label="Backup text"></textarea>' +
+        '<button class="sbtn primary" id="rGo">Replace with this backup</button><button class="sbtn" id="rNo">Cancel</button>');
+      $('rNo').onclick = closeSheet;
+      $('rGo').onclick = function () {
+        try { var s = JSON.parse($('rTxt').value); if (!s.notes || !s.vault) throw 0; S = s; buildMap(); save(); closeSheet(); renderList(); toast('Backup restored'); }
+        catch (e) { toast('That text is not a Field Vault backup. Copy it again and paste the whole thing.'); }
+      };
+    };
+    if ($('mEx')) $('mEx').onclick = function () {
+      S.notes = S.notes.filter(function (d) { return !d.ex; }); S.vault = S.vault.filter(function (d) { return !d.ex; });
+      buildMap(); save(); closeSheet(); renderList(); toast('Examples removed');
+    };
+  }
+  function showCopy(json) {
+    sheet('<h2>Copy backup</h2><p>Press and hold the text, choose Select all, then Copy.</p><textarea id="cTxt" readonly aria-label="Backup text">' + esc(json) + '</textarea><button class="sbtn" id="cClose">Done</button>');
+    $('cTxt').focus(); $('cTxt').select(); $('cClose').onclick = closeSheet;
+  }
+  function openDocMenu() {
+    var isV = cur.kind === 'vault', d = docOf(cur);
+    sheet('<h2>' + esc(isV ? d.title : noteTitle(d)) + '</h2>' +
+      '<button class="sbtn" id="dCopy">Copy text</button>' +
+      '<button class="sbtn danger" id="dDel">Delete this ' + (isV ? 'vault page' : 'note') + '</button>' +
+      '<button class="sbtn" id="dClose">Close</button>');
+    $('dClose').onclick = closeSheet;
+    $('dCopy').onclick = function () {
+      var txt = (isV ? d.title : noteTitle(d)) + '\n\n' + (d.text || '');
+      try { navigator.clipboard.writeText(txt).then(function () { closeSheet(); toast('Copied'); }, function () { showCopy(txt); }); } catch (e) { showCopy(txt); }
+    };
+    $('dDel').onclick = function () {
+      sheet('<h2>Delete?</h2><p>' + (isV ? 'The name will stop linking in your notes. Your notes stay as they are.' : 'This note will be gone from this phone.') + '</p>' +
+        '<button class="sbtn danger" id="yDel">Yes, delete</button><button class="sbtn" id="nDel">Keep it</button>');
+      $('nDel').onclick = closeSheet;
+      $('yDel').onclick = function () {
+        if (isV) S.vault = S.vault.filter(function (v) { return v.id !== d.id; }); else S.notes = S.notes.filter(function (n) { return n.id !== d.id; });
+        stack = stack.filter(function (x) { return x.id !== d.id; });
+        buildMap(); save(); closeSheet(); goBack(); toast('Deleted');
+      };
+    };
+  }
+
+  window.addEventListener('resize', function () { if (view === 'doc') paint(); });
+  S = load(); buildMap(); renderList();
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+</script>
+</body>
+</html>
