@@ -19,7 +19,11 @@ android {
     }
   }
   buildTypes {
-    release { minifyEnabled false; signingConfig signingConfigs.fv }
+    release {
+      minifyEnabled true
+      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+      signingConfig signingConfigs.fv
+    }
   }
   compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }

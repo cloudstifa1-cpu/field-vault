@@ -12,6 +12,7 @@ public class MainActivity extends Activity {
 
   @Override protected void onCreate(Bundle saved) {
     super.onCreate(saved);
+    WebView.setWebContentsDebuggingEnabled(false); // nobody can plug in and inspect the app's code
     web = new WebView(this);
     WebSettings s = web.getSettings();
     s.setJavaScriptEnabled(true);

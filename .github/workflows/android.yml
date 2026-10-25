@@ -14,10 +14,15 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.7' }
-      - name: Bundle the app page into the APK
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Scramble the app code (protects the linking engine)
+        working-directory: build
+        run: npm install --no-audit --no-fund && node protect.mjs
+      - name: Bundle the scrambled page into the APK
         run: |
           mkdir -p android/app/src/main/assets
-          cp index.html android/app/src/main/assets/
+          cp dist/index.html android/app/src/main/assets/index.html
       - name: Build
         working-directory: android
         run: gradle assembleRelease --no-daemon
