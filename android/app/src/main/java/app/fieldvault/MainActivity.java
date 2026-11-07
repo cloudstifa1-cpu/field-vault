@@ -21,6 +21,7 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -88,6 +89,12 @@ public class MainActivity extends Activity {
         if (hasLocation()) { cb.invoke(origin, true, false); return; }
         geoOrigin = origin; geoCb = cb;
         requestPermissions(new String[]{ Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }, REQ_LOC);
+      }
+      @Override public void onPermissionRequest(PermissionRequest r) {
+        runOnUiThread(() -> {
+          boolean cam = Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+          if (cam) r.grant(new String[]{ PermissionRequest.RESOURCE_VIDEO_CAPTURE }); else r.deny();
+        });
       }
       @Override public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams p) {
         if (fileCb != null) fileCb.onReceiveValue(null);
@@ -167,13 +174,19 @@ public class MainActivity extends Activity {
       if (Build.VERSION.SDK_INT >= 29) cv.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Field Vault");
       camUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
       Intent i = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+      if (i.resolveActivity(getPackageManager()) == null) { dropCamUri(); inAppCamera(); return; }
       i.putExtra(MediaStore.EXTRA_OUTPUT, camUri);
       i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
       startActivityForResult(i, REQ_CAM);
     } catch (Exception e) {
       dropCamUri();
-      jsToast("Could not open the camera: " + e.getMessage());
+      inAppCamera();
     }
+  }
+
+  // This phone's camera app won't take photos for other apps, so use Field Vault's own camera screen.
+  private void inAppCamera() {
+    runOnUiThread(() -> web.evaluateJavascript("window.fvCamera && fvCamera(" + JSONObject.quote(photoDoc == null ? "" : photoDoc) + ")", null));
   }
 
   private void startGallery(String doc) {

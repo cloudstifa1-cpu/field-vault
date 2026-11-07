@@ -133,6 +133,8 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
 .sample label { display: grid; gap: 4px; min-width: 0; }
 .sample input, .sample select { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px; font-size: 17px; width: 100%; box-sizing: border-box; min-width: 0; }
 .pair { display: grid; grid-template-columns: 1fr 84px; gap: 6px; }
+.cam { width: 100%; max-height: 62vh; background: #000; border-radius: 10px; object-fit: contain; }
+.snap { border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 16px; font-weight: 800; font-size: 20px; }
 .big { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 10px; background: #000; }
 #gTxt { color: var(--ink); font-size: 18px; }
 [hidden] { display: none !important; }
@@ -869,6 +871,34 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     });
   }
   function allPhotos() { var out = []; allDocs().forEach(function (d) { (d.photos || []).forEach(function (p) { out.push({ d: d, p: p }); }); }); return out; }
+
+
+  // Built-in camera: used when the phone's own camera app will not take photos for other apps.
+  window.fvCamera = function (key) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('This phone will not let apps use the camera. Use Gallery instead.'); return; }
+    var stream = null;
+    sheet('<video class="cam" id="camV" autoplay playsinline muted></video><p id="gTxt">Starting camera…</p>' +
+      '<button class="snap" id="camSnap" disabled>📸 Take photo</button><button class="sbtn" id="camNo">Done</button>');
+    var stopCam = function () { if (stream) stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; };
+    onSheetClose = stopCam;
+    $('camNo').onclick = closeSheet;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }).then(function (st) {
+      if (!$('camV')) { st.getTracks().forEach(function (t) { t.stop(); }); return; }
+      stream = st; $('camV').srcObject = st; $('camSnap').disabled = false; $('gTxt').textContent = 'Point at what you want, then tap Take photo. Take as many as you need.';
+    }, function () { if ($('gTxt')) $('gTxt').textContent = 'Could not start the camera. Check that Field Vault is allowed to use the camera in your phone settings.'; });
+    var n = 0;
+    $('camSnap').onclick = function () {
+      var v = $('camV'); if (!v || !v.videoWidth) return;
+      var c = document.createElement('canvas'), k = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+      c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      var id = uid(), b64 = c.toDataURL('image/jpeg', 0.82).split(',')[1];
+      Promise.resolve(photoPutB64(id, b64)).then(function () {
+        attachPhoto(key, id); save(); n++; if ($('gTxt')) $('gTxt').textContent = n === 1 ? '1 photo saved. Take another or tap Done.' : n + ' photos saved. Take another or tap Done.';
+        if (view === 'doc') renderField();
+      }, function () { toast('Could not save that photo'); });
+    };
+  };
 
   // ── Sheets: menu, backup, delete ──
   function endSheet() { if (onSheetClose) { var f = onSheetClose; onSheetClose = null; f(); } }
