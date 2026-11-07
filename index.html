@@ -128,6 +128,11 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
 .mini { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 0 12px; font-size: 16px; font-weight: 700; min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; color: var(--ink); }
 .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .thumb { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 10px; padding: 0; background: var(--surface) center / cover no-repeat; color: var(--muted); font-size: 14px; }
+.sample { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 12px; }
+.sample .full { grid-column: 1 / -1; }
+.sample label { display: grid; gap: 4px; min-width: 0; }
+.sample input, .sample select { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 10px; font-size: 17px; width: 100%; box-sizing: border-box; min-width: 0; }
+.pair { display: grid; grid-template-columns: 1fr 84px; gap: 6px; }
 .big { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 10px; background: #000; }
 #gTxt { color: var(--ink); font-size: 18px; }
 [hidden] { display: none !important; }
@@ -270,7 +275,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   }
   function fillRows() {
     var box = $('rows'), q = query.trim().toLowerCase(); box.innerHTML = '';
-    var match = function (d) { return !q || ((d.title || '') + ' ' + (d.aliases || []).join(' ') + ' ' + (d.text || '')).toLowerCase().indexOf(q) >= 0; };
+    var match = function (d) { return !q || ((d.title || '') + ' ' + (d.aliases || []).join(' ') + ' ' + (d.text || '') + ' ' + sampleLine(d.sample)).toLowerCase().indexOf(q) >= 0; };
     if (tab === 'notes') {
       var list = S.notes.filter(match).sort(function (a, b) { return b.updated - a.updated; });
       if (!list.length) box.innerHTML = '<p class="empty">' + (q ? 'No notes match “' + esc(query) + '”.' : 'No notes yet. Tap New note, then use your keyboard’s mic to talk.') + '</p>';
@@ -278,7 +283,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
         var b = document.createElement('button'); b.className = 'row';
         var links = findLinks(n.text).length, body = (n.text || '').replace(/\s+/g, ' ').trim();
         b.innerHTML = '<b>' + esc(noteTitle(n)) + '</b><span class="snip">' + esc(body || 'Empty') + '</span>' +
-          '<span class="meta"><span>' + when(n.updated) + '</span><span>' + links + ' link' + (links === 1 ? '' : 's') + '</span>' + (n.ex ? '<span class="ex">Example</span>' : '') + '</span>';
+          '<span class="meta"><span>' + when(n.updated) + '</span>' + (n.sample && n.sample.no ? '<span>🪨 ' + esc(n.sample.no) + '</span>' : '') + '<span>' + links + ' link' + (links === 1 ? '' : 's') + '</span>' + (n.ex ? '<span class="ex">Example</span>' : '') + '</span>';
         b.onclick = function () { stack = []; openDoc({ kind: 'note', id: n.id }); };
         box.appendChild(b);
       });
@@ -290,7 +295,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
       vl.forEach(function (v) {
         var b = document.createElement('button'); b.className = 'row v t-' + v.type;
         b.innerHTML = '<b>' + esc(v.title) + '</b>' + (v.text ? '<span class="snip">' + esc(v.text.replace(/\s+/g, ' ')) + '</span>' : '') +
-          '<span class="meta"><span>' + TYPES[v.type] + '</span><span>' + (c[v.id] || 0) + ' mention' + (c[v.id] === 1 ? '' : 's') + '</span>' +
+          '<span class="meta"><span>' + TYPES[v.type] + '</span>' + (v.sample && v.sample.no ? '<span>🪨 ' + esc(v.sample.no) + '</span>' : '') + '<span>' + (c[v.id] || 0) + ' mention' + (c[v.id] === 1 ? '' : 's') + '</span>' +
           (v.aliases.length ? '<span>Also: ' + esc(v.aliases.join(', ')) + '</span>' : '') + (v.ex ? '<span class="ex">Example</span>' : '') + '</span>';
         b.onclick = function () { stack = []; openDoc({ kind: 'vault', id: v.id }); };
         box.appendChild(b);
@@ -310,7 +315,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
       '<div class="ed"><div class="bd" id="bd" aria-hidden="true"></div><textarea id="ta" spellcheck="true" autocapitalize="sentences" placeholder="' +
       (isV ? 'Add details here. Come back anytime to add more.' : 'Tap here, then tap the mic on your keyboard and talk.') + '">' + esc(d.text || '') + '</textarea></div>' +
       '<div class="field-data"><div class="fbtns"><button class="fbtn" id="gpsBtn">📍 Add GPS</button><button class="fbtn" id="camBtn">📷 Photo</button><button class="fbtn" id="galBtn">🖼 Gallery</button></div>' +
-      '<div class="pts" id="pts"></div><div class="photos" id="photos"></div></div>' +
+      '<div class="pts" id="pts"></div><div class="photos" id="photos"></div><div id="sampleBox"></div></div>' +
       (isV ? '<span class="lbl">Mentioned in</span><div class="mentions" id="mentions"></div>' :
         '<p class="hint">Put the cursor on a word, or select a few words, then tap 🔗 Link word (or press Tab). Every time that name shows up again it links to its vault page.</p>') +
       '</div>';
@@ -543,6 +548,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
         $('yDel').onclick = function () { d.pts.splice(d.pts.indexOf(p), 1); d.updated = Date.now(); save(); closeSheet(); renderField(); };
       };
     });
+    renderSample(d);
     box.innerHTML = '';
     ph.forEach(function (p) {
       var b = document.createElement('button'); b.className = 'thumb'; b.setAttribute('aria-label', 'Photo from ' + when(p.t));
@@ -560,6 +566,54 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
       $('nDel').onclick = closeSheet;
       $('yDel').onclick = function () { d.photos.splice(d.photos.indexOf(p), 1); photoDel(p.id); d.updated = Date.now(); save(); closeSheet(); renderField(); };
     };
+  }
+
+
+  // ── Sample details (for prospectors and rockhounds) ──
+  var ROCKS = ['Quartz', 'Gold-bearing quartz', 'Black sand', 'Placer gravel', 'Concentrate', 'Pyrite', 'Chalcopyrite', 'Galena', 'Hematite', 'Magnetite',
+    'Arsenopyrite', 'Agate', 'Jasper', 'Chalcedony', 'Geode', 'Garnet', 'Obsidian', 'Petrified wood', 'Unknown'];
+  var WT_U = ['g', 'kg', 'oz', 'lb'], AS_U = ['g/t', 'oz/t', 'ppm', 'ppb', '%'];
+  function nextSampleNo() {
+    var last = null;
+    allDocs().forEach(function (d) { if (d.sample && /\d+$/.test(d.sample.no || '') && (!last || d.updated > last.updated)) last = d; });
+    if (!last) return 'S-001';
+    var m = last.sample.no.match(/^(.*?)(\d+)$/), pre = m[1], w = m[2].length, max = 0;
+    allDocs().forEach(function (d) {
+      var x = d.sample && (d.sample.no || '').match(/^(.*?)(\d+)$/);
+      if (x && x[1] === pre) max = Math.max(max, +x[2]);
+    });
+    var n = String(max + 1); while (n.length < w) n = '0' + n;
+    return pre + n;
+  }
+  function opts(list, v) { return list.map(function (u) { return '<option' + (u === v ? ' selected' : '') + '>' + u + '</option>'; }).join(''); }
+  function renderSample(d) {
+    var box = $('sampleBox'); if (!box) return;
+    if (!d.sample) {
+      box.innerHTML = '<button class="fbtn" id="smpAdd" style="width:100%">🪨 Add sample details</button>';
+      $('smpAdd').onclick = function () { d.sample = { no: nextSampleNo(), rock: '', wt: '', wtU: 'g', assay: '', assayU: 'g/t' }; d.updated = Date.now(); save(); renderSample(d); fillRowsSoon(); };
+      return;
+    }
+    var x = d.sample;
+    box.innerHTML = '<div class="sample">' +
+      '<label><span class="lbl">Sample #</span><input id="smpNo" value="' + esc(x.no || '') + '" autocapitalize="characters"></label>' +
+      '<label><span class="lbl">Rock / mineral</span><input id="smpRock" list="rockList" value="' + esc(x.rock || '') + '" placeholder="Pick or type"></label>' +
+      '<datalist id="rockList">' + ROCKS.map(function (r) { return '<option value="' + r + '">'; }).join('') + '</datalist>' +
+      '<label><span class="lbl">Weight</span><span class="pair"><input id="smpWt" inputmode="decimal" value="' + esc(x.wt || '') + '"><select id="smpWtU" aria-label="Weight unit">' + opts(WT_U, x.wtU) + '</select></span></label>' +
+      '<label><span class="lbl">Assay result</span><span class="pair"><input id="smpAs" inputmode="decimal" value="' + esc(x.assay || '') + '" placeholder="Not yet"><select id="smpAsU" aria-label="Assay unit">' + opts(AS_U, x.assayU) + '</select></span></label>' +
+      '<button class="mini full" id="smpDel" style="justify-content:center">Remove sample details</button></div>';
+    [['smpNo', 'no'], ['smpRock', 'rock'], ['smpWt', 'wt'], ['smpWtU', 'wtU'], ['smpAs', 'assay'], ['smpAsU', 'assayU']].forEach(function (f) {
+      var el = $(f[0]); el.oninput = el.onchange = function () { x[f[1]] = el.value.trim(); d.updated = Date.now(); save(); };
+    });
+    $('smpDel').onclick = function () {
+      sheet('<h2>Remove sample details?</h2><p>The note itself stays.</p><button class="sbtn danger" id="yDel">Yes, remove</button><button class="sbtn" id="nDel">Keep them</button>');
+      $('nDel').onclick = closeSheet;
+      $('yDel').onclick = function () { delete d.sample; d.updated = Date.now(); save(); closeSheet(); renderSample(d); };
+    };
+  }
+  function fillRowsSoon() { if (view === 'list') fillRows(); }
+  function sampleLine(x) {
+    if (!x) return '';
+    return [x.no, x.rock, x.wt ? x.wt + ' ' + x.wtU : '', x.assay ? 'assay ' + x.assay + ' ' + x.assayU : ''].filter(Boolean).join(' · ');
   }
 
   // GPS works with no phone signal; it needs a clear view of the sky. Keeps the most accurate reading.
@@ -677,11 +731,12 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     return '"' + v.replace(/"/g, '""') + '"';
   }
   function exportCsv() {
-    var rows = [['Kind', 'Title', 'Linked to', 'Latitude', 'Longitude', 'Accuracy (m)', 'Altitude (m)', 'GPS time', 'Photos', 'Last changed', 'Text'].map(function (h) { return csvCell(h); }).join(',')];
+    var rows = [['Kind', 'Title', 'Linked to', 'Sample #', 'Rock / mineral', 'Weight', 'Weight unit', 'Assay', 'Assay unit', 'Latitude', 'Longitude', 'Accuracy (m)', 'Altitude (m)', 'GPS time', 'Photos', 'Last changed', 'Text'].map(function (h) { return csvCell(h); }).join(',')];
     allDocs().forEach(function (d) {
-      var kind = d.type ? 'Vault: ' + TYPES[d.type] : 'Note', title = d.type ? d.title : noteTitle(d), pts = (d.pts && d.pts.length) ? d.pts : [null];
+      var kind = d.type ? 'Vault: ' + TYPES[d.type] : 'Note', title = d.type ? d.title : noteTitle(d), pts = (d.pts && d.pts.length) ? d.pts : [null], sm = d.sample || {};
       pts.forEach(function (p) {
         rows.push([csvCell(kind), csvCell(title), csvCell(linkedNames(d).join('; ')),
+          csvCell(sm.no), csvCell(sm.rock), csvCell(sm.wt, 1), csvCell(sm.no ? sm.wtU : ''), csvCell(sm.assay, 1), csvCell(sm.no || sm.assay ? sm.assayU : ''),
           csvCell(p ? p.lat : '', 1), csvCell(p ? p.lon : '', 1), csvCell(p ? p.acc : '', 1), csvCell(p && p.alt != null ? p.alt : '', 1),
           csvCell(p ? stamp(p.t) : ''), csvCell((d.photos || []).length, 1), csvCell(stamp(d.updated)), csvCell(d.text || '')].join(','));
       });
@@ -700,7 +755,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
         var title = d.type ? d.title : noteTitle(d), links = linkedNames(d);
         (d.pts || []).forEach(function (p, i) {
           n++;
-          var desc = (d.text || '').replace(/\n/g, '<br>') + (links.length ? '<br><br><b>Linked:</b> ' + links.join(', ') : '') + '<br><br>±' + p.acc + ' m · ' + stamp(p.t);
+          var desc = (d.sample ? '<b>Sample:</b> ' + sampleLine(d.sample) + '<br><br>' : '') + (d.text || '').replace(/\n/g, '<br>') + (links.length ? '<br><br><b>Linked:</b> ' + links.join(', ') : '') + '<br><br>±' + p.acc + ' m · ' + stamp(p.t);
           body += '<Placemark><name>' + esc(title + (d.pts.length > 1 ? ' (' + (i + 1) + ')' : '')) + '</name><description>' + cdata(desc) + '</description>' +
             '<TimeStamp><when>' + new Date(p.t).toISOString() + '</when></TimeStamp><styleUrl>#' + (d.type || 'note') + '</styleUrl>' +
             '<Point><coordinates>' + p.lon + ',' + p.lat + (p.alt != null ? ',' + p.alt : '') + '</coordinates></Point></Placemark>';

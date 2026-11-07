@@ -18,4 +18,5 @@ Every push to `main` rebuilds the APK (see `.github/workflows/android.yml`). Bef
 
 - 📍 Add GPS on any note or vault page (works with no signal; waits for the best accuracy)
 - 📷 Photo / 🖼 Gallery: photos are shrunk to save space and kept inside the app (full-size originals from the camera also stay in Pictures › Field Vault)
+- 🪨 Sample details: sample # (numbers itself: S-001, S-002…), rock/mineral, weight, assay result
 - ⋯ menu: Save backup file (notes + photos), Restore, Export to spreadsheet (CSV), Export to Google Earth (KML). Files go to Downloads › Field Vault.
