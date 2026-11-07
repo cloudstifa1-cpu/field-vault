@@ -45,7 +45,7 @@ import java.util.List;
 
 // Field Vault runs entirely on the phone: the app's page is bundled inside, notes and photos are saved on the device.
 public class MainActivity extends Activity {
-  private static final int REQ_CAM = 1, REQ_GAL = 2, REQ_FILE = 3, REQ_LOC = 10, REQ_STORE = 11;
+  private static final int REQ_CAM = 1, REQ_GAL = 2, REQ_FILE = 3, REQ_LOC = 10, REQ_STORE = 11, REQ_CAMPERM = 12;
   private static final int BIG = 1600, THUMB = 320;
 
   private WebView web;
@@ -132,6 +132,12 @@ public class MainActivity extends Activity {
     if (req == REQ_LOC && geoCb != null) {
       geoCb.invoke(geoOrigin, hasLocation(), false);
       geoCb = null;
+    } else if (req == REQ_CAMPERM) {
+      if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) startCamera(photoDoc);
+      else if (!shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
+        jsToast("Camera is blocked. Opening settings: tap Permissions, then Camera, then Allow.");
+        try { startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); } catch (Exception ignored) {}
+      } else jsToast("Field Vault needs the camera to take photos. Tap Photo again and choose Allow.");
     } else if (req == REQ_STORE) {
       jsToast("Thanks. Tap the button again.");
     }
@@ -147,8 +153,13 @@ public class MainActivity extends Activity {
   private static String newId() { return Long.toString(System.currentTimeMillis(), 36) + Long.toString((long) (Math.random() * 1e9), 36); }
 
   private void startCamera(String doc) {
-    if (needsStorage()) return;
     photoDoc = doc;
+    // Ask for the camera the first time Photo is tapped; the camera opens right after Allow.
+    if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+      requestPermissions(new String[]{ Manifest.permission.CAMERA }, REQ_CAMPERM);
+      return;
+    }
+    if (needsStorage()) return;
     try {
       ContentValues cv = new ContentValues();
       cv.put(MediaStore.Images.Media.DISPLAY_NAME, "FieldVault_" + System.currentTimeMillis() + ".jpg");
@@ -161,7 +172,7 @@ public class MainActivity extends Activity {
       startActivityForResult(i, REQ_CAM);
     } catch (Exception e) {
       dropCamUri();
-      jsToast("Could not open the camera");
+      jsToast("Could not open the camera: " + e.getMessage());
     }
   }
 

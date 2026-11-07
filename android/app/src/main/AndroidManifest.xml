@@ -3,6 +3,7 @@
   <!-- GPS for field points. Works with no phone signal. -->
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+  <uses-permission android:name="android.permission.CAMERA" />
   <!-- Only old phones (Android 9 and below) need this to save camera photos and backup files. -->
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
   <uses-feature android:name="android.hardware.location.gps" android:required="false" />
