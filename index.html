@@ -308,6 +308,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   // ── Page screen (a note or a vault page) ──
   function openDoc(c, opt) {
     opt = opt || {}; var d = docOf(c); if (!d) return renderList();
+    if (!cur || cur.id !== c.id) sampleOpen = null;
     view = 'doc'; cur = c; renderHeader(); $('pill').hidden = true; $('tools').hidden = false;
     var isV = c.kind === 'vault', m = $('main');
     m.innerHTML = '<div class="wrap docpad">' +
@@ -575,6 +576,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   // ── Sample details (for prospectors and rockhounds) ──
   var ROCKS = ['Quartz', 'Gold-bearing quartz', 'Black sand', 'Placer gravel', 'Concentrate', 'Pyrite', 'Chalcopyrite', 'Galena', 'Hematite', 'Magnetite',
     'Arsenopyrite', 'Agate', 'Jasper', 'Chalcedony', 'Geode', 'Garnet', 'Obsidian', 'Petrified wood', 'Unknown'];
+  var sampleOpen = null;
   var WT_U = ['g', 'kg', 'oz', 'lb'], AS_U = ['g/t', 'oz/t', 'ppm', 'ppb', '%'];
   function nextSampleNo() {
     var last = null;
@@ -593,20 +595,27 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     var box = $('sampleBox'); if (!box) return;
     if (!d.sample) {
       box.innerHTML = '<button class="fbtn" id="smpAdd" style="width:100%">🪨 Add sample details</button>';
-      $('smpAdd').onclick = function () { d.sample = { no: nextSampleNo(), rock: '', wt: '', wtU: 'g', assay: '', assayU: 'g/t' }; d.updated = Date.now(); save(); renderSample(d); fillRowsSoon(); };
+      $('smpAdd').onclick = function () { d.sample = { no: nextSampleNo(), rock: '', wt: '', wtU: 'g', assay: '', assayU: 'g/t' }; d.updated = Date.now(); save(); sampleOpen = d.id; renderSample(d); fillRowsSoon(); };
       return;
     }
     var x = d.sample;
+    if (sampleOpen !== d.id) {
+      box.innerHTML = '<button class="fbtn" id="smpOpen" style="width:100%;text-align:left;padding:12px 14px">🪨 ' + esc(sampleLine(x) || 'Sample') + '<br><span class="hint">Tap to edit sample details</span></button>';
+      $('smpOpen').onclick = function () { sampleOpen = d.id; renderSample(d); };
+      return;
+    }
     box.innerHTML = '<div class="sample">' +
       '<label><span class="lbl">Sample #</span><input id="smpNo" value="' + esc(x.no || '') + '" autocapitalize="characters"></label>' +
       '<label><span class="lbl">Rock / mineral</span><input id="smpRock" list="rockList" value="' + esc(x.rock || '') + '" placeholder="Pick or type"></label>' +
       '<datalist id="rockList">' + ROCKS.map(function (r) { return '<option value="' + r + '">'; }).join('') + '</datalist>' +
       '<label><span class="lbl">Weight</span><span class="pair"><input id="smpWt" inputmode="decimal" value="' + esc(x.wt || '') + '"><select id="smpWtU" aria-label="Weight unit">' + opts(WT_U, x.wtU) + '</select></span></label>' +
       '<label><span class="lbl">Assay result</span><span class="pair"><input id="smpAs" inputmode="decimal" value="' + esc(x.assay || '') + '" placeholder="Not yet"><select id="smpAsU" aria-label="Assay unit">' + opts(AS_U, x.assayU) + '</select></span></label>' +
+      '<button class="snap full" id="smpDone" style="padding:12px;font-size:18px">✓ Done</button>' +
       '<button class="mini full" id="smpDel" style="justify-content:center">Remove sample details</button></div>';
     [['smpNo', 'no'], ['smpRock', 'rock'], ['smpWt', 'wt'], ['smpWtU', 'wtU'], ['smpAs', 'assay'], ['smpAsU', 'assayU']].forEach(function (f) {
       var el = $(f[0]); el.oninput = el.onchange = function () { x[f[1]] = el.value.trim(); d.updated = Date.now(); save(); };
     });
+    $('smpDone').onclick = function () { sampleOpen = null; renderSample(d); };
     $('smpDel').onclick = function () {
       sheet('<h2>Remove sample details?</h2><p>The note itself stays.</p><button class="sbtn danger" id="yDel">Yes, remove</button><button class="sbtn" id="nDel">Keep them</button>');
       $('nDel').onclick = closeSheet;
