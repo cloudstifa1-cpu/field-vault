@@ -20,11 +20,11 @@
   --mix: 22%;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #121815; --surface: #1b231f; --ink: #e9efeb; --muted: #9aa8a0; --line: #2f3a34;
+  --bg: #121815; --surface: #1b231f; --ink: #e9efeb; --muted: #d0dbd5; --line: #2f3a34;
   --accent: #ffc233; --accent-ink: #15130c;
   --person: #ff8a57; --place: #4fd19c; --thing: #79a8ff; --idea: #d29bff; --mix: 26%; color-scheme: dark } }
 :root[data-theme="dark"] {
-  --bg: #121815; --surface: #1b231f; --ink: #e9efeb; --muted: #9aa8a0; --line: #2f3a34;
+  --bg: #121815; --surface: #1b231f; --ink: #e9efeb; --muted: #d0dbd5; --line: #2f3a34;
   --accent: #ffc233; --accent-ink: #15130c;
   --person: #ff8a57; --place: #4fd19c; --thing: #79a8ff; --idea: #d29bff; --mix: 26%; color-scheme: dark }
 
@@ -116,6 +116,20 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
 #toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(70px + env(safe-area-inset-top, 0px)); z-index: 30;
   background: var(--ink); color: var(--bg); border-radius: 10px; padding: 10px 16px; font-weight: 700; max-width: calc(100% - 32px); }
 @media (prefers-reduced-motion: no-preference) { #pill, #toast { animation: up .18s ease-out; } @keyframes up { from { opacity: 0; translate: 0 8px; } } }
+/* Field data: GPS + photos */
+.field-data { display: grid; gap: 10px; }
+.fbtns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fbtn { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 6px; font-weight: 700; font-size: 16px; min-height: 54px; }
+.pts { display: grid; gap: 8px; }
+.pt { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 8px 10px; }
+.pt span { flex: 1; min-width: 0; display: grid; }
+.pt b { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pt small { color: var(--muted); font-size: 15px; }
+.mini { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 0 12px; font-size: 16px; font-weight: 700; min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; color: var(--ink); }
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.thumb { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 10px; padding: 0; background: var(--surface) center / cover no-repeat; color: var(--muted); font-size: 14px; }
+.big { width: 100%; max-height: 60vh; object-fit: contain; border-radius: 10px; background: #000; }
+#gTxt { color: var(--ink); font-size: 18px; }
 [hidden] { display: none !important; }
 </style>
 </head>
@@ -295,6 +309,8 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
       (isV ? '<span class="lbl">Details</span>' : '') +
       '<div class="ed"><div class="bd" id="bd" aria-hidden="true"></div><textarea id="ta" spellcheck="true" autocapitalize="sentences" placeholder="' +
       (isV ? 'Add details here. Come back anytime to add more.' : 'Tap here, then tap the mic on your keyboard and talk.') + '">' + esc(d.text || '') + '</textarea></div>' +
+      '<div class="field-data"><div class="fbtns"><button class="fbtn" id="gpsBtn">📍 Add GPS</button><button class="fbtn" id="camBtn">📷 Photo</button><button class="fbtn" id="galBtn">🖼 Gallery</button></div>' +
+      '<div class="pts" id="pts"></div><div class="photos" id="photos"></div></div>' +
       (isV ? '<span class="lbl">Mentioned in</span><div class="mentions" id="mentions"></div>' :
         '<p class="hint">Put the cursor on a word, or select a few words, then tap 🔗 Link word (or press Tab). Every time that name shows up again it links to its vault page.</p>') +
       '</div>';
@@ -316,6 +332,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     ta.addEventListener('click', function () { setTimeout(checkPill, 0); });
     ta.addEventListener('keyup', function (e) { if (/Arrow|Home|End/.test(e.key)) checkPill(); });
     ta.addEventListener('keydown', function (e) { if (e.key === 'Tab') { e.preventDefault(); linkWord(); } });
+    bindField();
     window.scrollTo(0, 0);
     paint(opt.pos);
     if (opt.pos != null) {
@@ -415,32 +432,305 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     ta.dispatchEvent(new Event('input'));
   };
 
+  // ── Field data: GPS points and photos ──
+  // In the Android app, photos are saved as files by the app (window.FVNative). In a browser, they go in IndexedDB.
+  var NATIVE = window.FVNative || null, onSheetClose = null, gpsWatch = null, urlCache = {};
+  function docKey() { return cur.kind + ':' + cur.id; }
+  function fmtPt(p) { return p.lat.toFixed(5) + ', ' + p.lon.toFixed(5); }
+  function stamp(t) { var d = new Date(t), z = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()); }
+  function allDocs() { return S.notes.concat(S.vault); }
+
+  var idbP = null;
+  function idb() {
+    return idbP || (idbP = new Promise(function (res, rej) {
+      var r = indexedDB.open('fieldvault', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('photos'); };
+      r.onsuccess = function () { res(r.result); }; r.onerror = function () { idbP = null; rej(r.error); };
+    }));
+  }
+  function idbDo(mode, fn) {
+    return idb().then(function (db) {
+      return new Promise(function (res, rej) {
+        var tx = db.transaction('photos', mode), q = fn(tx.objectStore('photos'));
+        tx.oncomplete = function () { res(q && q.result); }; tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
+  function photoSrc(id, full) {
+    var key = full ? id : id + '_t';
+    if (NATIVE) return Promise.resolve(NATIVE.photoUrl(id, !!full));
+    if (urlCache[key]) return Promise.resolve(urlCache[key]);
+    return idbDo('readonly', function (s) { return s.get(key); }).then(function (b) { return b ? (urlCache[key] = URL.createObjectURL(b)) : ''; }, function () { return ''; });
+  }
+  function photoDel(id) {
+    if (NATIVE) { NATIVE.delPhoto(id); return; }
+    idbDo('readwrite', function (s) { s.delete(id); s.delete(id + '_t'); }).catch(function () {});
+  }
+  function blobToB64(b) { return new Promise(function (res) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1] || ''); }; r.onerror = function () { res(''); }; r.readAsDataURL(b); }); }
+  function b64ToBlob(b64) { var s = atob(b64), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return new Blob([a], { type: 'image/jpeg' }); }
+  function photoB64(id) {
+    if (NATIVE) return Promise.resolve(NATIVE.photoData(id) || '');
+    return idbDo('readonly', function (s) { return s.get(id); }).then(function (b) { return b ? blobToB64(b) : ''; }, function () { return ''; });
+  }
+  // Shrink a picture so it fits the phone: big copy (1600 px) and a small thumbnail (320 px).
+  function shrink(blob, max) {
+    return new Promise(function (res) {
+      var u = URL.createObjectURL(blob), im = new Image();
+      im.onload = function () {
+        var k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+        c.toBlob(function (b) { res(b); }, 'image/jpeg', max > 400 ? 0.75 : 0.7);
+      };
+      im.onerror = function () { URL.revokeObjectURL(u); res(null); };
+      im.src = u;
+    });
+  }
+  function photoPut(id, blob) { // browser only
+    return shrink(blob, 1600).then(function (big) {
+      if (!big) throw 0;
+      return shrink(big, 320).then(function (th) { return idbDo('readwrite', function (s) { s.put(big, id); s.put(th || big, id + '_t'); }); });
+    });
+  }
+  function photoPutB64(id, b64) { return NATIVE ? Promise.resolve(NATIVE.putPhoto(id, b64)) : photoPut(id, b64ToBlob(b64)); }
+
+  function attachPhoto(key, id, t) {
+    var k = String(key || '').split(':'), d = k.length === 2 ? docOf({ kind: k[0], id: k[1] }) : null;
+    if (!d) { d = { id: uid(), title: 'Photos', text: '', updated: Date.now() }; S.notes.unshift(d); }
+    (d.photos = d.photos || []).push({ id: id, t: t || Date.now() }); d.updated = Date.now();
+  }
+  function refreshView() { if (view === 'doc') renderField(); else fillRows(); }
+  // The Android app hands over photos it finished saving (works even if the phone closed the app while the camera was open).
+  window.fvPull = function () {
+    if (!NATIVE) return;
+    var list = []; try { list = JSON.parse(NATIVE.pendingPhotos() || '[]'); } catch (e) {}
+    list.forEach(function (p) { attachPhoto(p.doc, p.id, p.t); });
+    if (list.length) { save(); refreshView(); toast(list.length === 1 ? 'Photo added' : list.length + ' photos added'); }
+  };
+  window.fvToast = function (m) { toast(m); };
+
+  function bindField() {
+    $('gpsBtn').onclick = addGps;
+    $('camBtn').onclick = function () { pickPhoto(true); };
+    $('galBtn').onclick = function () { pickPhoto(false); };
+    renderField();
+  }
+  function pickPhoto(camera) {
+    if (NATIVE) { clearTimeout(saveT); try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} camera ? NATIVE.takePhoto(docKey()) : NATIVE.pickPhotos(docKey()); return; }
+    var inp = document.createElement('input'), key = docKey();
+    inp.type = 'file'; inp.accept = 'image/*'; if (camera) inp.setAttribute('capture', 'environment'); else inp.multiple = true;
+    inp.onchange = function () {
+      var files = [].slice.call(inp.files || []), n = 0;
+      files.reduce(function (p, f) {
+        return p.then(function () { var id = uid(); return photoPut(id, f).then(function () { attachPhoto(key, id); n++; }, function () { toast('Could not read that picture'); }); });
+      }, Promise.resolve()).then(function () { if (n) { save(); refreshView(); toast(n === 1 ? 'Photo added' : n + ' photos added'); } });
+    };
+    inp.click();
+  }
+  function renderField() {
+    var d = cur && docOf(cur), pb = $('pts'), box = $('photos'); if (!d || !pb) return;
+    var pts = d.pts || [], ph = d.photos || [];
+    pb.innerHTML = pts.map(function (p, i) {
+      var q = p.lat + ',' + p.lon;
+      return '<div class="pt"><span><b>📍 ' + fmtPt(p) + '</b><small>±' + p.acc + ' m · ' + when(p.t) + '</small></span>' +
+        '<a class="mini" href="geo:' + q + '?q=' + q + '">Map</a><button class="mini" data-del="' + i + '" aria-label="Remove this GPS point">✕</button></div>';
+    }).join('');
+    [].forEach.call(pb.querySelectorAll('[data-del]'), function (b) {
+      b.onclick = function () {
+        var p = pts[+b.getAttribute('data-del')];
+        sheet('<h2>Remove GPS point?</h2><p>' + fmtPt(p) + '</p><button class="sbtn danger" id="yDel">Yes, remove it</button><button class="sbtn" id="nDel">Keep it</button>');
+        $('nDel').onclick = closeSheet;
+        $('yDel').onclick = function () { d.pts.splice(d.pts.indexOf(p), 1); d.updated = Date.now(); save(); closeSheet(); renderField(); };
+      };
+    });
+    box.innerHTML = '';
+    ph.forEach(function (p) {
+      var b = document.createElement('button'); b.className = 'thumb'; b.setAttribute('aria-label', 'Photo from ' + when(p.t));
+      photoSrc(p.id).then(function (src) { if (src) b.style.backgroundImage = 'url("' + src + '")'; else b.textContent = 'Missing'; });
+      b.onclick = function () { viewPhoto(d, p); };
+      box.appendChild(b);
+    });
+  }
+  function viewPhoto(d, p) {
+    sheet('<img class="big" id="bigImg" alt="Photo"><p>' + when(p.t) + '</p><button class="sbtn danger" id="pDel">Delete this photo</button><button class="sbtn" id="pClose">Close</button>');
+    photoSrc(p.id, true).then(function (src) { if ($('bigImg') && src) $('bigImg').src = src; });
+    $('pClose').onclick = closeSheet;
+    $('pDel').onclick = function () {
+      sheet('<h2>Delete photo?</h2><p>It will be gone from this app.</p><button class="sbtn danger" id="yDel">Yes, delete</button><button class="sbtn" id="nDel">Keep it</button>');
+      $('nDel').onclick = closeSheet;
+      $('yDel').onclick = function () { d.photos.splice(d.photos.indexOf(p), 1); photoDel(p.id); d.updated = Date.now(); save(); closeSheet(); renderField(); };
+    };
+  }
+
+  // GPS works with no phone signal; it needs a clear view of the sky. Keeps the most accurate reading.
+  function addGps() {
+    if (!navigator.geolocation) { toast('This phone cannot give a GPS position here'); return; }
+    var d = docOf(cur), best = null, timer;
+    sheet('<h2>Getting GPS…</h2><p id="gTxt">Looking for satellites. Out in the open works best. It can take up to a minute.</p>' +
+      '<button class="sbtn primary" id="gUse" disabled>Use this position</button><button class="sbtn" id="gNo">Cancel</button>');
+    var stop = function () { if (gpsWatch != null) navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; clearTimeout(timer); };
+    var use = function () {
+      stop(); onSheetClose = null;
+      (d.pts = d.pts || []).push(best); d.updated = Date.now(); save(); closeSheet(); renderField(); toast('GPS saved: ' + fmtPt(best));
+    };
+    onSheetClose = stop;
+    $('gNo').onclick = closeSheet; $('gUse').onclick = use;
+    gpsWatch = navigator.geolocation.watchPosition(function (pos) {
+      var c = pos.coords;
+      if (!best || c.accuracy < best.acc) best = { lat: +c.latitude.toFixed(6), lon: +c.longitude.toFixed(6), acc: Math.round(c.accuracy), alt: c.altitude == null ? null : Math.round(c.altitude), t: Date.now() };
+      if (!$('gTxt')) return;
+      $('gTxt').textContent = fmtPt(best) + '  ·  within ' + best.acc + ' m' + (best.acc <= 15 ? ' (good)' : ' (still improving…)');
+      $('gUse').disabled = false;
+      if (best.acc <= 8) use();
+    }, function (e) {
+      if (!$('gTxt')) return;
+      if (e.code === 1) { stop(); $('gTxt').textContent = 'Location is turned off for Field Vault. Turn on Location in your phone settings and allow it for Field Vault, then try again.'; }
+      else if (!best) $('gTxt').textContent = e.code === 2 ? 'No position yet. Make sure Location is turned on in your phone’s quick settings.' : 'Still looking for satellites…';
+    }, { enableHighAccuracy: true, maximumAge: 0 });
+    timer = setTimeout(function () { if (!best) { stop(); if ($('gTxt')) $('gTxt').textContent = 'No GPS fix after 2 minutes. Move away from trees, cliffs or buildings and try again.'; } }, 120000);
+  }
+
+  // ── Saving files (backup, spreadsheet, Google Earth) ──
+  function fileWriter(name, mime) {
+    if (NATIVE) {
+      var err = NATIVE.fileBegin(name, mime);
+      return { ok: !err, err: err, w: function (s) { NATIVE.fileWrite(s); }, end: function () { return NATIVE.fileEnd(); } };
+    }
+    var parts = [];
+    return { ok: true, w: function (s) { parts.push(s); }, end: function () {
+      var a = document.createElement('a'), u = URL.createObjectURL(new Blob(parts, { type: mime }));
+      a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+      return 'your Downloads folder';
+    } };
+  }
+  function savedSheet(where, name, extra) {
+    sheet('<h2>Saved</h2><p>Saved to ' + esc(where) + ' as <b>' + esc(name) + '</b>.' + (extra ? ' ' + extra : '') + '</p>' +
+      (NATIVE ? '<button class="sbtn primary" id="shBtn">Send a copy (email, Drive…)</button>' : '') + '<button class="sbtn" id="shDone">Done</button>');
+    if ($('shBtn')) $('shBtn').onclick = function () { NATIVE.shareLast(); closeSheet(); };
+    $('shDone').onclick = closeSheet;
+  }
+  function writeFile(name, mime, text, extra) {
+    var f = fileWriter(name, mime); if (!f.ok) { toast(f.err); return; }
+    f.w(text); var where = f.end(); if (where && where.charAt(0) === '!') toast(where.slice(1)); else savedSheet(where, name, extra);
+  }
+  function saveBackup() {
+    var ids = []; allDocs().forEach(function (d) { (d.photos || []).forEach(function (p) { ids.push(p.id); }); });
+    var name = 'field-vault-backup-' + stamp(Date.now()).replace(/[: ]/g, '-') + '.json', f = fileWriter(name, 'application/json');
+    if (!f.ok) { toast(f.err); return; }
+    sheet('<h2>Saving backup…</h2><p id="gTxt">Starting…</p>');
+    f.w('{"app":"fieldvault","v":2,"saved":' + Date.now() + ',"state":' + JSON.stringify(S) + ',"photos":{');
+    var first = true, i = 0;
+    ids.reduce(function (p, id) {
+      return p.then(function () {
+        return photoB64(id).then(function (b) {
+          i++; if ($('gTxt')) $('gTxt').textContent = 'Photo ' + i + ' of ' + ids.length;
+          if (b) { f.w((first ? '' : ',') + JSON.stringify(id) + ':"' + b + '"'); first = false; }
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      f.w('}}'); var where = f.end();
+      if (where && where.charAt(0) === '!') { closeSheet(); toast(where.slice(1)); }
+      else savedSheet(where, name, 'Keep a copy off this phone too, so a lost or broken phone does not take your logs with it.');
+    });
+  }
+  function applyBackup(text) {
+    var o; try { o = JSON.parse(text); } catch (e) { o = null; }
+    var st = o && o.app === 'fieldvault' ? o.state : o;
+    if (!st || !st.notes || !st.vault) { toast('That is not a Field Vault backup'); return; }
+    var photos = (o.app === 'fieldvault' && o.photos) || {}, ids = Object.keys(photos), i = 0;
+    sheet('<h2>Restoring…</h2><p id="gTxt">Starting…</p>');
+    ids.reduce(function (p, id) {
+      return p.then(function () {
+        i++; if ($('gTxt')) $('gTxt').textContent = 'Photo ' + i + ' of ' + ids.length;
+        return photoPutB64(id, photos[id]).catch(function () {});
+      });
+    }, Promise.resolve()).then(function () {
+      S = st; buildMap(); save(); closeSheet(); stack = []; renderList(); toast('Backup restored');
+    });
+  }
+  function restoreSheet() {
+    sheet('<h2>Restore</h2><p>This replaces everything on this phone now with what is in the backup.</p>' +
+      '<button class="sbtn primary" id="rFile">Choose a backup file</button>' +
+      '<p>Or, for an older backup you copied as text, paste it here:</p><textarea id="rTxt" aria-label="Backup text"></textarea>' +
+      '<button class="sbtn" id="rGo">Restore pasted text</button><button class="sbtn" id="rNo">Cancel</button>');
+    $('rNo').onclick = closeSheet;
+    $('rGo').onclick = function () { applyBackup($('rTxt').value); };
+    $('rFile').onclick = function () {
+      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json,text/plain';
+      inp.onchange = function () {
+        var f = inp.files && inp.files[0]; if (!f) return;
+        var r = new FileReader(); r.onload = function () { applyBackup(String(r.result)); }; r.onerror = function () { toast('Could not open that file'); }; r.readAsText(f);
+      };
+      inp.click();
+    };
+  }
+
+  // Spreadsheet (CSV): one row per GPS point; pages with no GPS get one row with blank coordinates.
+  function linkedNames(d) {
+    var seen = {}, out = [];
+    findLinks(d.text, d.type ? d.id : null).forEach(function (r) { if (!seen[r.id]) { seen[r.id] = 1; out.push(vault(r.id).title); } });
+    return out;
+  }
+  function csvCell(v) {
+    v = v == null ? '' : String(v);
+    if (typeof arguments[1] === 'undefined' && /^[=+\-@\t\r]/.test(v)) v = "'" + v; // stop spreadsheets running it as a formula
+    return '"' + v.replace(/"/g, '""') + '"';
+  }
+  function exportCsv() {
+    var rows = [['Kind', 'Title', 'Linked to', 'Latitude', 'Longitude', 'Accuracy (m)', 'Altitude (m)', 'GPS time', 'Photos', 'Last changed', 'Text'].map(function (h) { return csvCell(h); }).join(',')];
+    allDocs().forEach(function (d) {
+      var kind = d.type ? 'Vault: ' + TYPES[d.type] : 'Note', title = d.type ? d.title : noteTitle(d), pts = (d.pts && d.pts.length) ? d.pts : [null];
+      pts.forEach(function (p) {
+        rows.push([csvCell(kind), csvCell(title), csvCell(linkedNames(d).join('; ')),
+          csvCell(p ? p.lat : '', 1), csvCell(p ? p.lon : '', 1), csvCell(p ? p.acc : '', 1), csvCell(p && p.alt != null ? p.alt : '', 1),
+          csvCell(p ? stamp(p.t) : ''), csvCell((d.photos || []).length, 1), csvCell(stamp(d.updated)), csvCell(d.text || '')].join(','));
+      });
+    });
+    writeFile('field-vault-' + stamp(Date.now()).slice(0, 10) + '.csv', 'text/csv', '﻿' + rows.join('\r\n') + '\r\n', 'Open it in Google Sheets or Excel.');
+  }
+  // Google Earth (KML): a pin for every GPS point, with the note text and linked names.
+  function exportKml() {
+    var COL = { note: 'ff00b3ff', person: 'ff0c41c2', place: 'ff527a0f', thing: 'ffc96325', idea: 'ffb83f8a' }, n = 0;
+    var cdata = function (s) { return '<![CDATA[' + String(s).replace(/]]>/g, ']]]]><![CDATA[>') + ']]>'; };
+    var k = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Field Vault</name>';
+    Object.keys(COL).forEach(function (s) { k += '<Style id="' + s + '"><IconStyle><color>' + COL[s] + '</color><scale>1.1</scale></IconStyle></Style>'; });
+    [['Notes', S.notes], ['Vault', S.vault]].forEach(function (g) {
+      var body = '';
+      g[1].forEach(function (d) {
+        var title = d.type ? d.title : noteTitle(d), links = linkedNames(d);
+        (d.pts || []).forEach(function (p, i) {
+          n++;
+          var desc = (d.text || '').replace(/\n/g, '<br>') + (links.length ? '<br><br><b>Linked:</b> ' + links.join(', ') : '') + '<br><br>±' + p.acc + ' m · ' + stamp(p.t);
+          body += '<Placemark><name>' + esc(title + (d.pts.length > 1 ? ' (' + (i + 1) + ')' : '')) + '</name><description>' + cdata(desc) + '</description>' +
+            '<TimeStamp><when>' + new Date(p.t).toISOString() + '</when></TimeStamp><styleUrl>#' + (d.type || 'note') + '</styleUrl>' +
+            '<Point><coordinates>' + p.lon + ',' + p.lat + (p.alt != null ? ',' + p.alt : '') + '</coordinates></Point></Placemark>';
+        });
+      });
+      if (body) k += '<Folder><name>' + g[0] + '</name>' + body + '</Folder>';
+    });
+    if (!n) { toast('No GPS points yet. Open a note and tap 📍 Add GPS.'); return; }
+    writeFile('field-vault-' + stamp(Date.now()).slice(0, 10) + '.kml', 'application/vnd.google-earth.kml+xml', k + '</Document></kml>', 'Open it in Google Earth to see your ' + n + ' point' + (n === 1 ? '' : 's') + ' on the map.');
+  }
+
   // ── Sheets: menu, backup, delete ──
-  function sheet(html) { $('sheetCard').innerHTML = html; $('sheet').hidden = false; }
-  function closeSheet() { $('sheet').hidden = true; }
+  function endSheet() { if (onSheetClose) { var f = onSheetClose; onSheetClose = null; f(); } }
+  function sheet(html) { endSheet(); $('sheetCard').innerHTML = html; $('sheet').hidden = false; }
+  function closeSheet() { endSheet(); $('sheet').hidden = true; }
   $('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
   function openMenu() {
     var hasEx = S.notes.concat(S.vault).some(function (d) { return d.ex; });
-    sheet('<h2>Field Vault</h2><p>Everything is saved on this phone, in this browser. Copy a backup now and then and keep it somewhere safe.</p>' +
-      '<button class="sbtn primary" id="mCopy">Copy backup</button>' +
+    sheet('<h2>Field Vault</h2><p>Everything is saved on this phone only. Save a backup file now and then, and keep a copy somewhere else.</p>' +
+      '<button class="sbtn primary" id="mSave">💾 Save backup file</button>' +
       '<button class="sbtn" id="mRestore">Restore from a backup</button>' +
+      '<button class="sbtn" id="mCsv">📊 Export to spreadsheet (CSV)</button>' +
+      '<button class="sbtn" id="mKml">🌎 Export to Google Earth (KML)</button>' +
       (hasEx ? '<button class="sbtn danger" id="mEx">Remove the example notes</button>' : '') +
       '<button class="sbtn" id="mClose">Close</button>');
     $('mClose').onclick = closeSheet;
-    $('mCopy').onclick = function () {
-      var json = JSON.stringify(S);
-      var done = function () { closeSheet(); toast('Backup copied. Paste it into a note app or email to yourself.'); };
-      try { navigator.clipboard.writeText(json).then(done, function () { showCopy(json); }); } catch (e) { showCopy(json); }
-    };
-    $('mRestore').onclick = function () {
-      sheet('<h2>Restore</h2><p>Paste a backup below. This replaces what is on this phone now.</p><textarea id="rTxt" aria-label="Backup text"></textarea>' +
-        '<button class="sbtn primary" id="rGo">Replace with this backup</button><button class="sbtn" id="rNo">Cancel</button>');
-      $('rNo').onclick = closeSheet;
-      $('rGo').onclick = function () {
-        try { var s = JSON.parse($('rTxt').value); if (!s.notes || !s.vault) throw 0; S = s; buildMap(); save(); closeSheet(); renderList(); toast('Backup restored'); }
-        catch (e) { toast('That text is not a Field Vault backup. Copy it again and paste the whole thing.'); }
-      };
-    };
+    $('mSave').onclick = saveBackup;
+    $('mRestore').onclick = restoreSheet;
+    $('mCsv').onclick = exportCsv;
+    $('mKml').onclick = exportKml;
     if ($('mEx')) $('mEx').onclick = function () {
       S.notes = S.notes.filter(function (d) { return !d.ex; }); S.vault = S.vault.filter(function (d) { return !d.ex; });
       buildMap(); save(); closeSheet(); renderList(); toast('Examples removed');
@@ -466,6 +756,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
         '<button class="sbtn danger" id="yDel">Yes, delete</button><button class="sbtn" id="nDel">Keep it</button>');
       $('nDel').onclick = closeSheet;
       $('yDel').onclick = function () {
+        (d.photos || []).forEach(function (p) { photoDel(p.id); });
         if (isV) S.vault = S.vault.filter(function (v) { return v.id !== d.id; }); else S.notes = S.notes.filter(function (n) { return n.id !== d.id; });
         stack = stack.filter(function (x) { return x.id !== d.id; });
         buildMap(); save(); closeSheet(); goBack(); toast('Deleted');
@@ -480,7 +771,8 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     return false;
   };
   window.addEventListener('resize', function () { if (view === 'doc') paint(); });
-  S = load(); buildMap(); renderList();
+  S = load(); buildMap(); renderList(); window.fvPull();
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) window.fvPull(); });
 })();
 </script>
 <script>

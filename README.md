@@ -13,3 +13,9 @@ A phone notes app for field work and brainstorming. Talk your notes in with your
 Download and install: https://github.com/cloudstifa1-cpu/field-vault/releases/latest/download/field-vault.apk
 
 Every push to `main` rebuilds the APK (see `.github/workflows/android.yml`). Before bundling, `build/protect.mjs` scrambles the code (obfuscation) so the linking engine can't easily be read or copied. Only the scrambled copy ships in the APK; the readable source stays in this private repo. The app runs with no signal.
+
+## Field data (Nov 2026)
+
+- 📍 Add GPS on any note or vault page (works with no signal; waits for the best accuracy)
+- 📷 Photo / 🖼 Gallery: photos are shrunk to save space and kept inside the app (full-size originals from the camera also stay in Pictures › Field Vault)
+- ⋯ menu: Save backup file (notes + photos), Restore, Export to spreadsheet (CSV), Export to Google Earth (KML). Files go to Downloads › Field Vault.
