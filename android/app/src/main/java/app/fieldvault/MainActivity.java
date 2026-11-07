@@ -303,28 +303,46 @@ public class MainActivity extends Activity {
   // ── Saving files to Downloads/Field Vault ──
   private String beginFile(String name, String mime) {
     closeOut();
-    if (!name.matches("[A-Za-z0-9._\\- ]{1,80}")) return "Bad file name";
     try {
+      OutputStream os = openDownload(name, mime, "");
+      out = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8), 65536);
+      return "";
+    } catch (Exception e) {
+      return "Could not save the file: " + e.getMessage();
+    }
+  }
+
+  // Saves a picture (or any binary file) into Downloads/Field Vault/<sub>.
+  private String saveBytes(String name, String mime, String b64, String sub) {
+    try (OutputStream os = openDownload(name, mime, sub)) {
+      os.write(Base64.decode(b64, Base64.DEFAULT));
+      return "Downloads › Field Vault" + (sub.isEmpty() ? "" : " › " + sub);
+    } catch (Exception e) {
+      return "!Could not save the picture: " + e.getMessage();
+    }
+  }
+
+  private OutputStream openDownload(String name, String mime, String sub) throws Exception {
+    if (!name.matches("[A-Za-z0-9._\\- ]{1,80}") || !sub.matches("[A-Za-z ]{0,20}")) throw new Exception("bad file name");
+    String folder = "Field Vault" + (sub.isEmpty() ? "" : "/" + sub);
+    {
       OutputStream os;
       if (Build.VERSION.SDK_INT >= 29) {
         ContentValues cv = new ContentValues();
         cv.put(MediaStore.Downloads.DISPLAY_NAME, name);
         cv.put(MediaStore.Downloads.MIME_TYPE, mime);
-        cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Field Vault");
+        cv.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/" + folder);
         lastUri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
         os = getContentResolver().openOutputStream(lastUri);
       } else {
-        if (needsStorage()) return "Allow storage access, then try again.";
-        File d = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Field Vault");
+        if (needsStorage()) throw new Exception("allow storage access, then try again");
+        File d = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), folder);
         d.mkdirs();
         os = new FileOutputStream(new File(d, name));
         lastUri = null;
       }
       lastMime = mime;
-      out = new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.UTF_8), 65536);
-      return "";
-    } catch (Exception e) {
-      return "Could not save the file: " + e.getMessage();
+      return os;
     }
   }
 
@@ -380,6 +398,7 @@ public class MainActivity extends Activity {
     @JavascriptInterface public void fileWrite(String s) {
       try { if (out != null) out.write(s); } catch (Exception e) { closeOut(); }
     }
+    @JavascriptInterface public String saveB64(String name, String mime, String b64, String sub) { return saveBytes(name, mime, b64, sub == null ? "" : sub); }
     @JavascriptInterface public String fileEnd() {
       if (out == null) return "!Could not finish saving the file";
       try { out.close(); out = null; return "Downloads › Field Vault"; } catch (Exception e) { out = null; return "!Could not finish saving the file"; }
