@@ -1,0 +1,6 @@
+// Cloudflare: serves the scrambled web / iPhone version from dist/ (built by "npm run build").
+{
+  "name": "field-vault",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" }
+}
