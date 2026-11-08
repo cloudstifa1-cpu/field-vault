@@ -7,7 +7,11 @@
 <meta name="description" content="Speak it. Link it. Find it later. Voice notes for field work with linked vault pages.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Field Vault">
 <title>Field Vault</title>
 <style>
 /* Layout: one column, phone-first. List screen ↔ page screen, with a thumb toolbar pinned above the keyboard. */
@@ -468,8 +472,11 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
     var key = full ? id : id + '_t';
     if (NATIVE) return Promise.resolve(NATIVE.photoUrl(id, !!full));
     if (urlCache[key]) return Promise.resolve(urlCache[key]);
-    return idbDo('readonly', function (s) { return s.get(key); }).then(function (b) { return b ? (urlCache[key] = URL.createObjectURL(b)) : ''; }, function () { return ''; });
+    return idbDo('readonly', function (s) { return s.get(key); }).then(function (b) { return b ? (urlCache[key] = URL.createObjectURL(asBlob(b))) : ''; }, function () { return ''; });
   }
+  // Photos are stored as plain bytes: every browser (including older iPhones) can keep those.
+  function asBlob(v) { return v instanceof Blob ? v : new Blob([v], { type: 'image/jpeg' }); }
+  function toBuf(b) { return b.arrayBuffer ? b.arrayBuffer() : new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(r.result); }; r.onerror = rej; r.readAsArrayBuffer(b); }); }
   function photoDel(id) {
     if (NATIVE) { NATIVE.delPhoto(id); return; }
     idbDo('readwrite', function (s) { s.delete(id); s.delete(id + '_t'); }).catch(function () {});
@@ -478,7 +485,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   function b64ToBlob(b64) { var s = atob(b64), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return new Blob([a], { type: 'image/jpeg' }); }
   function photoB64(id) {
     if (NATIVE) return Promise.resolve(NATIVE.photoData(id) || '');
-    return idbDo('readonly', function (s) { return s.get(id); }).then(function (b) { return b ? blobToB64(b) : ''; }, function () { return ''; });
+    return idbDo('readonly', function (s) { return s.get(id); }).then(function (b) { return b ? blobToB64(asBlob(b)) : ''; }, function () { return ''; });
   }
   // Shrink a picture so it fits the phone: big copy (1600 px) and a small thumbnail (320 px).
   function shrink(blob, max) {
@@ -497,7 +504,9 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   function photoPut(id, blob) { // browser only
     return shrink(blob, 1600).then(function (big) {
       if (!big) throw 0;
-      return shrink(big, 320).then(function (th) { return idbDo('readwrite', function (s) { s.put(big, id); s.put(th || big, id + '_t'); }); });
+      return shrink(big, 320).then(function (th) {
+        return Promise.all([toBuf(big), toBuf(th || big)]).then(function (bufs) { return idbDo('readwrite', function (s) { s.put(bufs[0], id); s.put(bufs[1], id + '_t'); }); });
+      });
     });
   }
   function photoPutB64(id, b64) { return NATIVE ? Promise.resolve(NATIVE.putPhoto(id, b64)) : photoPut(id, b64ToBlob(b64)); }
@@ -663,13 +672,33 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
       return { ok: !err, err: err, w: function (s) { NATIVE.fileWrite(s); }, end: function () { return NATIVE.fileEnd(); } };
     }
     var parts = [];
-    return { ok: true, w: function (s) { parts.push(s); }, end: function () {
-      var a = document.createElement('a'), u = URL.createObjectURL(new Blob(parts, { type: mime }));
-      a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
-      return 'your Downloads folder';
-    } };
+    return { ok: true, w: function (s) { parts.push(s); }, end: function () { return browserSave(name, mime, new Blob(parts, { type: mime })); } };
+  }
+  // iPhone: files go out through the Share sheet (Save to Files, AirDrop, Mail…). Other browsers: a normal download.
+  var IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1), shareQ = [];
+  function browserSave(name, mime, blob) {
+    if (IOS && navigator.canShare && window.File) {
+      try {
+        var f = new File([blob], name, { type: mime });
+        if (!navigator.canShare({ files: [f] })) f = new File([blob], name, { type: 'application/octet-stream' });
+        if (navigator.canShare({ files: [f] })) { shareQ.push(f); return 'iphone'; }
+      } catch (e) {}
+    }
+    var a = document.createElement('a'), u = URL.createObjectURL(blob);
+    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+    return 'your Downloads folder';
   }
   function savedSheet(where, name, extra) {
+    if (where === 'iphone') {
+      sheet('<h2>Ready</h2><p><b>' + esc(name) + '</b> is ready. Tap the button, then choose <b>Save to Files</b>, or send it by Mail, Messages or AirDrop.' + (extra ? ' ' + extra : '') + '</p>' +
+        '<button class="sbtn primary" id="shIos">Save or send…</button><button class="sbtn" id="shDone">Done</button>');
+      $('shIos').onclick = function () {
+        var files = shareQ.slice();
+        navigator.share({ files: files }).then(function () { shareQ = []; closeSheet(); }, function (e) { if (e && e.name !== 'AbortError') toast('Could not open the share menu'); });
+      };
+      $('shDone').onclick = function () { shareQ = []; closeSheet(); };
+      return;
+    }
     sheet('<h2>Saved</h2><p>Saved to ' + esc(where) + ' as <b>' + esc(name) + '</b>.' + (extra ? ' ' + extra : '') + '</p>' +
       (NATIVE ? '<button class="sbtn primary" id="shBtn">Send a copy (email, Drive…)</button>' : '') + '<button class="sbtn" id="shDone">Done</button>');
     if ($('shBtn')) $('shBtn').onclick = function () { NATIVE.shareLast(); closeSheet(); };
@@ -836,9 +865,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   }
   function saveBin(name, mime, b64, sub) {
     if (NATIVE) return NATIVE.saveB64(name, mime, b64, sub || '');
-    var a = document.createElement('a'), u = URL.createObjectURL(new Blob([b64Bytes(b64)], { type: mime }));
-    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
-    return 'your Downloads folder';
+    return browserSave(name, mime, new Blob([b64Bytes(b64)], { type: mime }));
   }
   function pickFormat(title, cb) {
     sheet('<h2>' + esc(title) + '</h2><p>Pick the file type you need.</p>' +
@@ -875,6 +902,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
       }, Promise.resolve()).then(function () {
         if (!done) return fail('Could not save the photos');
         if (done === 1) savedSheet(where, lastName);
+        else if (where === 'iphone') savedSheet(where, done + ' ' + f[2] + ' photos');
         else { sheet('<h2>Saved</h2><p>Saved ' + done + ' photos to ' + esc(where) + ' as ' + f[2] + ' files.</p><button class="sbtn" id="shDone">Done</button>'); $('shDone').onclick = closeSheet; }
       });
     });
@@ -916,7 +944,8 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   $('sheet').onclick = function (e) { if (e.target === this) closeSheet(); };
   function openMenu() {
     var hasEx = S.notes.concat(S.vault).some(function (d) { return d.ex; });
-    sheet('<h2>Field Vault</h2><p>Everything is saved on this phone only. Save a backup file now and then, and keep a copy somewhere else.</p>' +
+    var tip = IOS && !navigator.standalone ? '<p><b>iPhone:</b> tap the Share button <b>⎋</b> at the bottom of Safari, then <b>Add to Home Screen</b>. It then works with no signal, and Safari will not clear your notes.</p>' : '';
+    sheet('<h2>Field Vault</h2><p>Everything is saved on this phone only. Save a backup file now and then, and keep a copy somewhere else.</p>' + tip +
       '<button class="sbtn primary" id="mSave">💾 Save backup file</button>' +
       '<button class="sbtn" id="mRestore">Restore from a backup</button>' +
       '<button class="sbtn" id="mCsv">📊 Export to spreadsheet (CSV)</button>' +
@@ -971,6 +1000,7 @@ mark.hit { background: color-mix(in srgb, var(--accent) 70%, transparent); }
   };
   window.addEventListener('resize', function () { if (view === 'doc') paint(); });
   S = load(); buildMap(); renderList(); window.fvPull();
+  if (!NATIVE && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
   document.addEventListener('visibilitychange', function () { if (!document.hidden) window.fvPull(); });
 })();
 </script>

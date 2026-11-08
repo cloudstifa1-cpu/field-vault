@@ -1,0 +1,9 @@
+# Netlify builds the iPhone/web version: scrambles the code, then publishes only the scrambled copy.
+[build]
+  command = "cd build && npm install --no-audit --no-fund && node protect.mjs && cd .. && cp sw.js manifest.webmanifest icon-192.png icon-512.png apple-touch-icon.png dist/"
+  publish = "dist"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
